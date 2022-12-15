@@ -7,6 +7,32 @@ from time import monotonic, sleep
 
 
 
+class Dict2Obj(object):
+    """https://stackoverflow.com/a/1305682"""
+    def __init__(self, d):
+        for k, v in d.items():
+            if isinstance(k, (list, tuple)):
+                setattr(self, k, [obj(x) if isinstance(x, dict) else x for x in v])
+            else:
+                setattr(self, k, obj(v) if isinstance(v, dict) else v)
+
+class Relay:
+    def __init__(self, thr):
+        self.thr = thr
+        self.remain = 0
+    # on theta
+    def __call__(self, x):
+        self.remain += x
+        if self.remain > self.thr:
+            y = self.remain - self.thr
+        elif self.remain < -self.thr:
+            y = self.remain + self.thr
+        else:
+            self.remain *= 0.95
+            y = 0
+        self.remain = self.remain - y
+        return y
+
 def theta_diff(a, b):
     c = a - b
     if c >= pi:
@@ -16,15 +42,23 @@ def theta_diff(a, b):
     return c
     
 class State:
-    def __init__(self, filter_level=None):
+    def __init__(
+        self,
+        filter_level=None,  # smoother
+        relay_thr=None  # less shaking
+    ):
         self._now = 0
         self.last = 0
         if filter_level is not None:
-            self.filternig = True
+            self.use_filter = True
             self.alpha = 1 / 2 ** filter_level
         else:
-            self.filternig = False
-    
+            self.use_filter = False
+        if relay_thr is not None:
+            self.use_relay = True
+            self.relay = Relay(relay_thr)
+        else:
+            self.use_relay = False
     @property
     def now(self):
         return self._now
@@ -32,11 +66,15 @@ class State:
     @now.setter
     def now(self, new):
         self.last = self._now
-        if self.filternig:
-            self._now = new * self.alpha \
+        if self.use_filter:
+            new = new * self.alpha \
                       + self._now * (1 - self.alpha)
-        else:
-            self._now = new
+        diff = new - self.last
+        self._now = self.last + (
+            self.relay(diff)
+            if self.use_relay else
+            diff
+        )
         
     @property
     def diff(self):
@@ -90,9 +128,10 @@ class TouchWheel5:
         
         # states
         self.filter_level = 1 # not more than 2
-        self.x = State(filter_level=self.filter_level)
-        self.y = State(filter_level=self.filter_level)
-        self.z = State(filter_level=self.filter_level)
+        self.relay_thr = 0.2
+        self.x = State(filter_level=self.filter_level, relay_thr=self.relay_thr)
+        self.y= State(filter_level=self.filter_level, relay_thr=self.relay_thr)
+        self.z = State(filter_level=self.filter_level, relay_thr=self.relay_thr)
         
         self.r = State()  # amplitude on the plane
         self.l = State()  # amplitude in the space
@@ -117,13 +156,21 @@ class TouchWheel5:
             self.y.now ** 2
         )
         self.l.now = sqrt(
-            self.r.now +
+            self.r.now ** 2 +
             self.z.now ** 2
         )
         self.theta.now = atan2(self.y.now, self.x.now)
         self.phi.now = atan2(self.z.now, self.r.now)
         
-        return self.x, self.y, self.z, self.l
+        return Dict2Obj({
+            'x': self.x.now,
+            'y': self.y.now,
+            'z': self.z.now,
+            'r': self.r.now,
+            'theta': self.theta.now,
+            'l': self.l.now,
+            'phi': self.phi.now
+        })
         
 import board
 import usb_hid
@@ -144,10 +191,10 @@ wheel = TouchWheel5(
 print('startplot:', 'x', 'y')
 for i in range(100000):
     sleep(0.01)
-    # wheel.get_raw()
+    raw = wheel.get_raw()
     if wheel.l.now > 0.8:
         mouse.move(
-            x=int(wheel.x.now*10),
-            y=-int(wheel.y.now*10),
+            x=int(raw.x*10),
+            y=-int(raw.y*10),
         )
-    # print(wheel.x.now, wheel.y.now)
+    print(raw.x, raw.y)
