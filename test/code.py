@@ -5,8 +5,6 @@ import time
 from timetrigger import Timer
 from time import monotonic, sleep
 
-
-
 class Dict2Obj(object):
     """https://stackoverflow.com/a/1305682"""
     def __init__(self, d):
@@ -45,8 +43,10 @@ class State:
     def __init__(
         self,
         filter_level=None,  # smoother
-        relay_thr=None  # less shaking
+        relay_thr=None,  # less shaking
+        id=None
     ):
+        self.id = id
         self._now = 0
         self.last = 0
         if filter_level is not None:
@@ -80,7 +80,7 @@ class State:
     def diff(self):
         return self._now - self.last
 
-class TouchWheel5:
+class TouchWheelPhysics:
     def __init__(
         self,
         up,
@@ -138,7 +138,7 @@ class TouchWheel5:
         self.theta = State()  # angle on the plane
         self.phi = State()  # angle raised
     
-    def get_raw(self):
+    def get(self):
         # read sensor
         pads_now = [r.raw_value for r in self.pads]
         # conver sensor to weights
@@ -172,13 +172,105 @@ class TouchWheel5:
             'phi': self.phi.now
         })
         
+class EventQueue:
+    def __init__(self):
+        self.data = []
+
+    def append(self, given):
+        self.data.append(given)
+
+    def get(self):
+        if self.data:
+            return self.data.pop(0)
+
+    def clear(self):
+        self.data = []
+
+    def __len__(self):
+        return len(self.data)
+
+    def __bool__(self):
+        return bool(self.data)
+        
+class Event:
+    def __init__(self, name, val):
+        if name in [
+            'press',
+            'release',
+            'dial'
+        ]:
+            self.name = name
+        else:
+            raise Exception('bad event ID')
+        self.val = val
+    def __str__(self):
+        return self.name + ' event with value ' + str(self.val)
+        
+class TouchWheelEvents:
+    def __init__(
+        self, 
+        wheel,
+        N=8,
+        thr=0.8,
+        thr_deg=20,
+    ):
+        self.wheel = wheel
+        self.dial_N = N
+        self.thr = thr
+        self.thr_rad = thr_deg / 180 * pi
+        
+        self.any = State(id='any')
+        self.ring = State()
+        self.up = State(id='up')
+        self.down = State(id='down')
+        self.left = State(id='left')
+        self.right = State(id='right')
+        self.center = State(id='center')
+        
+        self.events = EventQueue()
+    
+    def get(self):
+        # get physical value
+        phy = self.wheel.get()
+        # touch detect
+        self.any.now = int(phy.l > self.thr)
+        self.ring.now = int(phy.r > self.thr)
+        self.center.now = int(abs(theta_diff(pi / 2, phy.phi)) < self.thr_rad) & self.any.now
+        self.up.now = int(abs(theta_diff(pi / 2, phy.theta)) < self.thr_rad) & self.ring.now
+        self.down.now = int(abs(theta_diff(-pi / 2, phy.theta)) < self.thr_rad)& self.ring.now
+        self.left.now = int(abs(theta_diff(pi, phy.theta)) < self.thr_rad)& self.ring.now
+        self.right.now = int(abs(theta_diff(0, phy.theta)) < self.thr_rad)& self.ring.now
+        
+        if self.any.diff == 1:
+            self.events.append(Event(
+                name='press',
+                val=self.any.id
+            ))
+        for state in [
+            self.center,
+            self.up,
+            self.down,
+            self.left,
+            self.right,
+        ]:
+            if state.diff == -1:
+                self.events.append(Event(
+                    name='release',
+                    val=state.id
+                ))
+            
+        return self.events.get()
+            
+        
+        
+        
 import board
 import usb_hid
 from adafruit_hid.mouse import Mouse
 
 mouse = Mouse(usb_hid.devices)
 
-wheel = TouchWheel5(
+wheel_phy = TouchWheelPhysics(
     up=board.D7,
     down=board.D0,
     left=board.D6,
@@ -188,13 +280,22 @@ wheel = TouchWheel5(
     pad_max = [2160, 2345, 2160, 1896, 2602] ,
     pad_min = [904, 1239, 862, 879, 910]
 )
-print('startplot:', 'x', 'y')
+
+"""
+# print('startplot:', 'x', 'y')
 for i in range(100000):
     sleep(0.01)
-    raw = wheel.get_raw()
-    if wheel.l.now > 0.8:
+    raw = wheel_phy.get()
+    if wheel_phy.l.now > 0.8:
         mouse.move(
             x=int(raw.x*10),
             y=-int(raw.y*10),
         )
-    print(raw.x, raw.y)
+    # print(raw.x, raw.y)
+"""
+
+wheel_events = TouchWheelEvents(wheel_phy)
+for i in range(100000):
+    event = wheel_events.get()
+    if event:
+        print(event)
