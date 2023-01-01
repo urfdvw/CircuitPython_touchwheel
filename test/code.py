@@ -206,16 +206,44 @@ class Event:
     def __str__(self):
         return self.name + ' event with value ' + str(self.val)
         
+class Dial:
+    def __init__(self, N):
+        self.N = N
+        self.dial_changed = False
+        self.last_dial_time = monotonic()
+        
+    def reset(self, theta):
+        self.theta_residual = 0
+        self.theta_d = 0
+        self.theta_last = theta
+        self.dial_changed = False
+        
+    def update(self, theta):
+        self.theta_d = theta_diff(theta, self.theta_last)
+        self.theta_residual += self.theta_d
+        dial = 0
+        while self.theta_residual > pi / self.N:
+            self.theta_residual -= 2 * pi / self.N
+            dial += 1
+        while self.theta_residual < -pi / self.N:
+            self.theta_residual += 2 * pi / self.N
+            dial -= 1
+        if dial:
+            self.dial_changed = True
+        self.theta_last = theta
+        return dial
+        
+        
 class TouchWheelEvents:
     def __init__(
         self, 
         wheel,
         N=8,
-        thr=0.8,
-        thr_deg=20,
+        thr=0.5,
+        thr_deg=40,
     ):
         self.wheel = wheel
-        self.dial_N = N
+        
         self.thr = thr
         self.thr_rad = thr_deg / 180 * pi
         
@@ -226,6 +254,8 @@ class TouchWheelEvents:
         self.left = State(id='left')
         self.right = State(id='right')
         self.center = State(id='center')
+        
+        self.dial = Dial(N)
         
         self.events = EventQueue()
     
@@ -241,23 +271,40 @@ class TouchWheelEvents:
         self.left.now = int(abs(theta_diff(pi, phy.theta)) < self.thr_rad)& self.ring.now
         self.right.now = int(abs(theta_diff(0, phy.theta)) < self.thr_rad)& self.ring.now
         
+        # press
         if self.any.diff == 1:
             self.events.append(Event(
                 name='press',
                 val=self.any.id
             ))
-        for state in [
-            self.center,
-            self.up,
-            self.down,
-            self.left,
-            self.right,
-        ]:
-            if state.diff == -1:
+            
+            
+        if self.ring.diff == 1:
+            self.dial.reset(phy.theta)
+        
+        # hold
+        if self.ring.now == 1:
+            dial = self.dial.update(phy.theta)
+            if dial:
                 self.events.append(Event(
-                    name='release',
-                    val=state.id
+                    name='dial',
+                    val=dial
                 ))
+                
+        # release
+        if not self.dial.dial_changed:
+            for state in [
+                self.center,
+                self.up,
+                self.down,
+                self.left,
+                self.right,
+            ]:
+                if state.diff == -1:
+                    self.events.append(Event(
+                        name='release',
+                        val=state.id
+                    ))
             
         return self.events.get()
             
