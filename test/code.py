@@ -197,7 +197,8 @@ class Event:
         if name in [
             'press',
             'release',
-            'dial'
+            'dial',
+            'long'
         ]:
             self.name = name
         else:
@@ -224,10 +225,10 @@ class Dial:
         dial = 0
         while self.theta_residual > pi / self.N:
             self.theta_residual -= 2 * pi / self.N
-            dial += 1
+            dial -= 1
         while self.theta_residual < -pi / self.N:
             self.theta_residual += 2 * pi / self.N
-            dial -= 1
+            dial += 1
         if dial:
             self.dial_changed = True
         self.theta_last = theta
@@ -239,12 +240,15 @@ class TouchWheelEvents:
         self, 
         wheel,
         N=8,
-        thr=0.5,
-        thr_deg=40,
+        thr_upper=0.8,
+        thr_lower=0.5,
+        thr_deg=20,
     ):
         self.wheel = wheel
         
-        self.thr = thr
+        self.thr_upper = thr_upper
+        self.thr_lower = thr_lower
+        self.thr = self.thr_upper
         self.thr_rad = thr_deg / 180 * pi
         
         self.any = State(id='any')
@@ -256,6 +260,7 @@ class TouchWheelEvents:
         self.center = State(id='center')
         
         self.dial = Dial(N)
+        self.hold_timer = Timer()
         
         self.events = EventQueue()
     
@@ -271,28 +276,22 @@ class TouchWheelEvents:
         self.left.now = int(abs(theta_diff(pi, phy.theta)) < self.thr_rad)& self.ring.now
         self.right.now = int(abs(theta_diff(0, phy.theta)) < self.thr_rad)& self.ring.now
         
+        # adaptive thr
+        if self.any.diff == 1:
+            self.thr = self.thr_lower
+        if self.any.diff == -1:
+            self.thr = self.thr_upper
+        
         # press
         if self.any.diff == 1:
             self.events.append(Event(
                 name='press',
                 val=self.any.id
             ))
-            
-            
         if self.ring.diff == 1:
             self.dial.reset(phy.theta)
-        
-        # hold
-        if self.ring.now == 1:
-            dial = self.dial.update(phy.theta)
-            if dial:
-                self.events.append(Event(
-                    name='dial',
-                    val=dial
-                ))
-                
         # release
-        if not self.dial.dial_changed:
+        if self.any.diff == -1 and not self.dial.dial_changed:
             for state in [
                 self.center,
                 self.up,
@@ -305,11 +304,38 @@ class TouchWheelEvents:
                         name='release',
                         val=state.id
                     ))
+        # dial
+        if self.ring.now == 1:
+            dial = self.dial.update(phy.theta)
+            if dial:
+                self.events.append(Event(
+                    name='dial',
+                    val=dial
+                ))
+                
+        # long press
+        if self.any.diff == 1:
+            self.hold_timer.start(1)
+        if (self.any.now == 1 
+        and self.hold_timer.over()
+        and not self.dial.dial_changed):
+            self.dial.dial_changed = True
+            for state in [
+                self.center,
+                self.up,
+                self.down,
+                self.left,
+                self.right,
+            ]:
+                if state.now == 1:
+                    self.events.append(Event(
+                        name='long',
+                        val=state.id
+                    ))
+        if self.any.diff == -1:
+            self.dial.dial_changed = False
             
         return self.events.get()
-            
-        
-        
         
 import board
 import usb_hid
@@ -341,8 +367,16 @@ for i in range(100000):
     # print(raw.x, raw.y)
 """
 
-wheel_events = TouchWheelEvents(wheel_phy)
+wheel_events = TouchWheelEvents(
+    wheel_phy,
+    N=10,
+)
+N = 0
 for i in range(100000):
     event = wheel_events.get()
     if event:
-        print(event)
+        if event.name == 'dial':
+            N += event.val
+            print(N)
+        else:
+            # print(event)
