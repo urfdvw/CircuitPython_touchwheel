@@ -1,6 +1,7 @@
 import board
 import usb_hid
 from adafruit_hid.mouse import Mouse
+from time import sleep
 from touchwheel import TouchWheelPhysics, TouchWheelEvents
 
 mouse = Mouse(usb_hid.devices)
@@ -16,18 +17,18 @@ wheel_phy = TouchWheelPhysics(
     pad_min = [904, 1239, 862, 879, 910]
 )
 
-"""
+
 # print('startplot:', 'x', 'y')
-for i in range(100000):
-    sleep(0.01)
-    raw = wheel_phy.get()
-    if wheel_phy.l.now > 0.8:
-        mouse.move(
-            x=int(raw.x*10),
-            y=-int(raw.y*10),
-        )
-    # print(raw.x, raw.y)
-"""
+# for i in range(100000):
+#     sleep(0.01)
+#     raw = wheel_phy.get()
+#     if wheel_phy.l.now > 0.8:
+#         mouse.move(
+#             x=int(raw.x*10),
+#             y=-int(raw.y*10),
+#         )
+#     print(raw.x, raw.y)
+
 
 wheel_events = TouchWheelEvents(
     wheel_phy,

@@ -65,112 +65,23 @@ class State:
         
     @now.setter
     def now(self, new):
-        self.last = self._now
+        self.last = self._now # _now is the old value now
+        # low pass filter
         if self.use_filter:
             new = new * self.alpha \
                       + self._now * (1 - self.alpha)
+        # Relay
         diff = new - self.last
-        self._now = self.last + (
+        new = self.last + (
             self.relay(diff)
             if self.use_relay else
             diff
         )
+        self._now = new
         
     @property
     def diff(self):
         return self._now - self.last
-
-class TouchWheelPhysics:
-    def __init__(
-        self,
-        up,
-        down,
-        left,
-        right,
-        center,
-        pad_max = None,
-        pad_min = None,
-        n_sec = 8,
-    ):
-        # touch pads
-        self.pads = [touchio.TouchIn(p) for p in [
-            up,
-            down,
-            left,
-            right,
-            center
-        ]]
-        # range of touch pads
-        if pad_max is None or pad_min is None:
-            start_time = monotonic()
-            pad_max = [0] * 5
-            pad_min = [100000] * 5
-            while monotonic() - start_time < 5:
-                # run the test for 5s
-                # in the mean time, slide on the ring for multiple cycles.
-                for i in range(5):
-                    value = self.pads[i].raw_value
-                    pad_max[i] = max(pad_max[i], value)
-                    pad_min[i] = min(pad_min[i], value)
-                    # print(ring_max, ring_min)
-                    sleep(0.1)
-            print('pad_max =', pad_max, ',')
-            print('pad_min =', pad_min)
-            # cancel running the original script
-            import sys
-            sys.exit()
-        else: 
-            self.pad_max, self.pad_min = pad_max, pad_min
-        # direction constants
-        self.alter_x = [0, 0, -1, 1, 0]
-        self.alter_y = [1, -1, 0, 0, 0]
-        self.alter_z = [0, 0, 0, 0, 1]
-        
-        # states
-        self.filter_level = 1 # not more than 2
-        self.relay_thr = 0.2
-        self.x = State(filter_level=self.filter_level, relay_thr=self.relay_thr)
-        self.y= State(filter_level=self.filter_level, relay_thr=self.relay_thr)
-        self.z = State(filter_level=self.filter_level, relay_thr=self.relay_thr)
-        
-        self.r = State()  # amplitude on the plane
-        self.l = State()  # amplitude in the space
-        self.theta = State()  # angle on the plane
-        self.phi = State()  # angle raised
-    
-    def get(self):
-        # read sensor
-        pads_now = [r.raw_value for r in self.pads]
-        # conver sensor to weights
-        w = [
-            (pads_now[i] - self.pad_min[i]) / (self.pad_max[i] - self.pad_min[i])
-            for i in range(5)
-        ]
-        # computer vector sum
-        self.x.now = sum([w[i] * self.alter_x[i] for i in range(5)])
-        self.y.now = sum([w[i] * self.alter_y[i] for i in range(5)])
-        self.z.now = sum([w[i] * self.alter_z[i] for i in range(5)])
-        # conver to polar axis
-        self.r.now = sqrt(
-            self.x.now ** 2 + 
-            self.y.now ** 2
-        )
-        self.l.now = sqrt(
-            self.r.now ** 2 +
-            self.z.now ** 2
-        )
-        self.theta.now = atan2(self.y.now, self.x.now)
-        self.phi.now = atan2(self.z.now, self.r.now)
-        
-        return Dict2Obj({
-            'x': self.x.now,
-            'y': self.y.now,
-            'z': self.z.now,
-            'r': self.r.now,
-            'theta': self.theta.now,
-            'l': self.l.now,
-            'phi': self.phi.now
-        })
         
 class EventQueue:
     def __init__(self):
@@ -233,7 +144,98 @@ class Dial:
             self.dial_changed = True
         self.theta_last = theta
         return dial
+
+class TouchWheelPhysics:
+    def __init__(
+        self,
+        up,
+        down,
+        left,
+        right,
+        center,
+        pad_max = None,
+        pad_min = None,
+        n_sec = 8,
+    ):
+        # touch pads
+        self.pads = [touchio.TouchIn(p) for p in [
+            up,
+            down,
+            left,
+            right,
+            center
+        ]]
+        # range of touch pads
+        if pad_max is None or pad_min is None:
+            start_time = monotonic()
+            pad_max = [0] * 5
+            pad_min = [100000] * 5
+            while monotonic() - start_time < 5:
+                # run the test for 5s
+                # in the mean time, slide on the ring for multiple cycles.
+                for i in range(5):
+                    value = self.pads[i].raw_value
+                    pad_max[i] = max(pad_max[i], value)
+                    pad_min[i] = min(pad_min[i], value)
+                    # print(ring_max, ring_min)
+                    sleep(0.1)
+            print('pad_max =', pad_max, ',')
+            print('pad_min =', pad_min)
+            # cancel running the original script
+            import sys
+            sys.exit()
+        else: 
+            self.pad_max, self.pad_min = pad_max, pad_min
+        # direction constants
+        self.alter_x = [0, 0, -1, 1, 0]
+        self.alter_y = [1, -1, 0, 0, 0]
+        self.alter_z = [0, 0, 0, 0, 1]
         
+        # states
+        self.filter_level = 1 # not more than 2
+        self.relay_thr = 0.5
+        self.x = State(filter_level=self.filter_level, relay_thr=self.relay_thr)
+        self.y= State(filter_level=self.filter_level, relay_thr=self.relay_thr)
+        self.z = State(filter_level=self.filter_level, relay_thr=self.relay_thr)
+        
+        self.r = State()  # amplitude on the plane
+        self.l = State()  # amplitude in the space
+        self.theta = State()  # angle on the plane
+        self.phi = State()  # angle raised
+    
+    def get(self):
+        # read sensor
+        pads_now = [r.raw_value for r in self.pads]
+        # conver sensor to weights
+        w = [
+            (pads_now[i] - self.pad_min[i]) / (self.pad_max[i] - self.pad_min[i])
+            for i in range(5)
+        ]
+        # computer vector sum
+        self.x.now = sum([w[i] * self.alter_x[i] for i in range(5)])
+        self.y.now = sum([w[i] * self.alter_y[i] for i in range(5)])
+        self.z.now = sum([w[i] * self.alter_z[i] for i in range(5)])
+        # conver to polar axis
+        self.r.now = sqrt(
+            self.x.now ** 2 + 
+            self.y.now ** 2
+        )
+        self.l.now = sqrt(
+            self.r.now ** 2 +
+            self.z.now ** 2
+        )
+        self.theta.now = atan2(self.y.now, self.x.now)
+        self.phi.now = atan2(self.z.now, self.r.now)
+        
+        return Dict2Obj({
+            'x': self.x.now,
+            'y': self.y.now,
+            'z': self.z.now,
+            'r': self.r.now,
+            'theta': self.theta.now,
+            'l': self.l.now,
+            'phi': self.phi.now
+        })
         
 class TouchWheelEvents:
     def __init__(
