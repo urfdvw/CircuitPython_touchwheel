@@ -174,20 +174,24 @@ class iPod(Application):
         )
         self.splash.append(self.note_text)
 
-    def update(self, ring_get):
+    def update(self, event):
+        if event is None:
+            return 0, {}, {}
         # buzzer
-        if ring_get['buttons']['center'] == -1 \
-            or ring_get['buttons']['ring'] == -1:
+        if event.name == 'press':
             # if press
+            self.freq = 800
+        if event.name == 'release':
             self.freq = 1000
-            
-        if ring_get['buttons']['down'] == -1:
-            self.disp_playing ^= True
-        if ring_get['buttons']['center'] == -1:
-            self.disp_cursor ^= True
-        self.disp_bar += ring_get['theta_d'] * 0.3
-        self.disp_bar = min(self.disp_bar, 1)
-        self.disp_bar = max(self.disp_bar, 0)
+            if event.val == 'down':
+                self.disp_playing ^= True
+            if event.val == 'center':
+                self.disp_cursor ^= True
+        if event.name == 'dial':
+            self.freq = 10
+            self.disp_bar += event.val * 0.02
+            self.disp_bar = min(self.disp_bar, 1)
+            self.disp_bar = max(self.disp_bar, 0)
         return 0, {}, {}
 
     def display(self, display, buzzer):

@@ -19,41 +19,21 @@ from driver import Buzzer
 buzzer = Buzzer(board.D10)
 
 #%% clickwheel
-from driver import Ring, Button
-center = Button(board.D8)
-ring = Ring(
-    [
-        board.D6, # left
-        board.D7, # up
-        board.D0, # down
-        board.D9, # right
-    ],
-    center,
+from touchwheel import TouchWheelPhysics, TouchWheelEvents
+wheel_phy = TouchWheelPhysics(
+    up=board.D7,
+    down=board.D0,
+    left=board.D6,
+    right=board.D9,
+    center=board.D8,
+    # comment the following 2 lines to enter range measuring mode
+    pad_max = [2160, 2345, 2160, 1896, 2602] ,
+    pad_min = [904, 1239, 862, 879, 910]
 )
-
-#%% find the range of raw_value for ring pad.
-# run this code if you are testing a new PCB design
-if False:
-    from time import monotonic, sleep
-    tic = monotonic()
-    ring_max = [0] * 4
-    ring_min = [100000] * 4
-    while monotonic() - tic < 5:
-        # run the test for 5s
-        # in the mean time, slide on the ring for multiple cycles.
-        for i in range(4):
-            value = ring.ring[i].raw_value
-            ring_max[i] = max(ring_max[i], value)
-            ring_min[i] = min(ring_min[i], value)
-            # print(ring_max, ring_min)
-            sleep(0.1)
-    print(ring_max, ',', ring_min)
-    # cancel running the original script
-    import sys
-    sys.exit()
-
-#%% use pre measured max and min
-ring.max, ring.min = [1830, 1769, 2070, 1603], [841, 920, 1238, 880]
+wheel_events = TouchWheelEvents(
+    wheel_phy,
+    N=10,
+)
 
 #%% define screen
 import busio
@@ -102,12 +82,12 @@ while True:
     # Background procedures
     fpsMonitor_app()
 
-    # FPS control
-    if not frame_app():
-        continue
+    # # FPS control
+    # if not frame_app():
+    #     continue
 
     # logic
-    shift, message, broadcast = app.update(ring.get())
+    shift, message, broadcast = app.update(wheel_events.get())
     memo.update(broadcast)
     if shift:
         app.receive(message, memo)
