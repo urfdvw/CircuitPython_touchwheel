@@ -1,9 +1,40 @@
 #%% clickwheel
 import touchio
 from math import sqrt, atan2, pi
-import time
-from timetrigger import Timer
 from time import monotonic, sleep
+
+class Timer:
+    """
+    One time use timer class
+    """
+    def __init__(self, hold=False):
+        self.duration = 0
+        self.start_time = monotonic()
+        self.enable = False
+        self.hold = hold
+        self.dt = 0
+    def over(self):
+        """
+        check if timer is over
+        if self.hold is off
+            timer is auto-reset after check
+        otherwise
+            timer can be checked multiple times without affectiong the result.
+        """
+        self.dt = monotonic() - self.start_time
+        out = (self.dt > self.duration) and self.enable
+        if out and not self.hold:
+            self.enable = False
+        return out
+    def start(self, duration):
+        """
+        start a timer of a certian duration
+        """
+        self.duration = duration
+        self.start_time = monotonic()
+        self.enable = True
+    def disable(self):
+        self.enable = False
 
 class Dict2Obj(object):
     """https://stackoverflow.com/a/1305682"""
@@ -237,7 +268,7 @@ class TouchWheelPhysics:
             'phi': self.phi.now
         })
         
-class TouchWheelEvents:
+class TouchWheelNavigationEvents:
     def __init__(
         self, 
         wheel,
