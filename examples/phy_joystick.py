@@ -29,21 +29,24 @@ Email: urfdvw@gmail.com
 """
 from time import sleep
 import board
+import touchio
 import usb_hid
 from adafruit_hid.gamepad import Gamepad
 from touchwheel import TouchWheelPhysics
+
 gamepad = Gamepad(usb_hid.devices)
 
 wheel_phy = TouchWheelPhysics(
-    up=board.D7,
-    down=board.D0,
-    left=board.D6,
-    right=board.D9,
-    center=board.D8,
+    up=touchio.TouchIn(board.D7),
+    down=touchio.TouchIn(board.D0),
+    left=touchio.TouchIn(board.D6),
+    right=touchio.TouchIn(board.D9),
+    center=touchio.TouchIn(board.D8),
     # comment the following 2 lines to enter range measuring mode
-    pad_max = [2160, 2345, 2160, 1896, 2602] ,
-    pad_min = [904, 1239, 862, 879, 910]
+    pad_max=[2160, 2345, 2160, 1896, 2602],
+    pad_min=[904, 1239, 862, 879, 910],
 )
+
 
 def limit(x):
     if x > 127:
@@ -52,7 +55,8 @@ def limit(x):
         return -127
     return int(x)
 
-print('startplot:', 'x', 'y') # For data ploting
+
+print("startplot:", "x", "y")  # For data ploting
 while True:
     sleep(0.01)
     raw = wheel_phy.get()
@@ -61,6 +65,6 @@ while True:
             x=limit(raw.x * 100),
             y=-limit(raw.y * 100),
         )
-    else: 
+    else:
         gamepad.move_joysticks(x=0, y=0)
-    print(raw.x, raw.y) # For data ploting
+    print(raw.x, raw.y)  # For data ploting

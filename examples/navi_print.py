@@ -23,22 +23,23 @@ Email: urfdvw@gmail.com
 """
 
 import board
+import touchio
 from touchwheel import TouchWheelPhysics, TouchWheelNavigationEvents
 
 wheel_phy = TouchWheelPhysics(
-    up=board.D7,
-    down=board.D0,
-    left=board.D6,
-    right=board.D9,
-    center=board.D8,
+    up=touchio.TouchIn(board.D7),
+    down=touchio.TouchIn(board.D0),
+    left=touchio.TouchIn(board.D6),
+    right=touchio.TouchIn(board.D9),
+    center=touchio.TouchIn(board.D8),
     # comment the following 2 lines to enter range measuring mode
-    pad_max = [2160, 2345, 2160, 1896, 2602] ,
-    pad_min = [904, 1239, 862, 879, 910]
+    pad_max=[2160, 2345, 2160, 1896, 2602],
+    pad_min=[904, 1239, 862, 879, 910],
 )
 
 navi_events = TouchWheelNavigationEvents(
     wheel_phy,
-    N=10, # number of dial per-cycle, increase N to speed up dial but decrease accuracy
+    N=10,  # number of dial per-cycle, increase N to speed up dial but decrease accuracy
 )
 
 dial_position = 0
@@ -46,7 +47,6 @@ for i in range(100000):
     event = navi_events.get()
     if event:
         print(event)
-        if event.name == 'dial':
+        if event.name == "dial":
             dial_position += event.val
-            print('dial position: ', dial_position)
-        
+            print("dial position: ", dial_position)
